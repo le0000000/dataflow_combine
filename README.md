@@ -12,6 +12,9 @@ type pairedVec struct {
 There are 10,000,000 items in the PCollection.
 
 ## How to run
+
+To build the code, you need to install [Bazel](https://bazel.build/). A Google Cloud project with Dataflow service enabled is required to reproduce the issue.
+
 ```
 bazel run -c opt pipeline:main_combine -- \
 --input_file=gs://gcs_bucket/input/input_10m.txt \
