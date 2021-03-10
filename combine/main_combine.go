@@ -17,9 +17,11 @@ var (
 	inputFile = flag.String("input_file", "", "Input file.")
 	outputFile = flag.String("output_file", "", "Output file.")
 	logN = flag.Uint64("log_n", 8, "Vector size bit.")
+	combineDomain = flag.Uint64("combine_domain", 100000, "Number of keys for pre-combine.")
 )
 
 func init() {
+	beam.RegisterType(reflect.TypeOf((*addRandomKeyFn)(nil)).Elem())
 	beam.RegisterType(reflect.TypeOf((*genVecFn)(nil)).Elem())
 	beam.RegisterType(reflect.TypeOf((*combineVecFn)(nil)).Elem())
 	beam.RegisterType(reflect.TypeOf((*flattenVecFn)(nil)).Elem())
@@ -64,6 +66,15 @@ func (fn *combineVecFn) Setup() {
 	fn.counterInput = beam.NewCounter("combinetest","combine_input")
 	fn.counterCreate = beam.NewCounter("combinetest","combine_create")
 	fn.counterMerge = beam.NewCounter("combinetest","combine_merge")
+}
+
+type addRandomKeyFn struct {
+	Domain uint64
+}
+
+func (fn *addRandomKeyFn) ProcessElement(e pairedVec) (uint64, pairedVec) {
+	key := uint64(rand.Int63n(int64(fn.Domain)))
+	return key, e
 }
 
 
@@ -130,7 +141,12 @@ func main() {
 	rRecords := beam.Reshuffle(scope, records)
 
 	vecs := beam.ParDo(scope, &genVecFn{LogN: *logN}, rRecords)
-	histogram := beam.Combine(scope, &combineVecFn{LogN: *logN}, vecs)
+
+	keyVecs := beam.ParDo(scope, &addRandomKeyFn{Domain: *combineDomain}, vecs)
+	combinedKeyVecs := beam.CombinePerKey(scope, &combineVecFn{LogN: *logN}, keyVecs)
+	combinedVecs := beam.DropKey(scope, combinedKeyVecs)
+
+	histogram := beam.Combine(scope, &combineVecFn{LogN: *logN}, combinedVecs)
 
 	lines := beam.ParDo(scope, &flattenVecFn{}, histogram)
 	textio.Write(scope, *outputFile, lines)
